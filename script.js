@@ -106,26 +106,32 @@
             applyTheme(e.target.checked ? 'dark' : 'light');
         });
 
-        // Hide / show entries side-panel
+        // Hide / show entries side-panel (icon button)
         const hideToggle = document.getElementById('hide-toggle');
-        const hideLabel = document.getElementById('hide-label');
         const sidePanelEl = document.querySelector('.side-panel');
         function applyHideMode(h) {
-            if (!sidePanelEl) return;
+            if (!sidePanelEl || !hideToggle) return;
             if (h) {
                 sidePanelEl.classList.add('hidden');
-                if (hideLabel) hideLabel.innerText = 'Show';
+                hideToggle.setAttribute('aria-pressed', 'true');
+                hideToggle.classList.add('active');
+                hideToggle.title = 'Show inputs';
             } else {
                 sidePanelEl.classList.remove('hidden');
-                if (hideLabel) hideLabel.innerText = 'Hide';
+                hideToggle.setAttribute('aria-pressed', 'false');
+                hideToggle.classList.remove('active');
+                hideToggle.title = 'Hide inputs';
             }
-            localStorage.setItem('hideSide', h ? 'true' : 'false');
+            try { localStorage.setItem('hideSide', h ? 'true' : 'false'); } catch (e) {}
         }
         const savedHide = localStorage.getItem('hideSide') === 'true';
         if (hideToggle) {
-            hideToggle.checked = savedHide;
-            applyHideMode(hideToggle.checked);
-            hideToggle.addEventListener('change', (e) => applyHideMode(e.target.checked));
+            // initialize
+            applyHideMode(savedHide);
+            hideToggle.addEventListener('click', () => {
+                const isPressed = hideToggle.getAttribute('aria-pressed') === 'true';
+                applyHideMode(!isPressed);
+            });
         } else if (savedHide && sidePanelEl) {
             sidePanelEl.classList.add('hidden');
         }
@@ -238,6 +244,90 @@
 
         // Load saved results
         loadResults();
+
+        // --- Edit Title & Description UI ---
+        const wheelTitleEl = document.getElementById('wheel-title');
+        const wheelDescEl = document.getElementById('wheel-description');
+        const editTitleBtn = document.getElementById('floating-edit-btn') || document.getElementById('edit-title-btn');
+        const editOverlay = document.getElementById('edit-overlay');
+        const editModal = document.getElementById('edit-modal');
+        const editTitleInput = document.getElementById('edit-title-input');
+        const editDescTextarea = document.getElementById('edit-desc-textarea');
+        const editCancelBtn = document.getElementById('edit-cancel');
+        const editOkBtn = document.getElementById('edit-ok');
+        const editCloseX = document.getElementById('edit-close-x');
+
+        function openEditModal() {
+            if (!editOverlay) return;
+            // Save original values so Cancel can revert
+            editOverlay.dataset.origTitle = (wheelTitleEl && wheelTitleEl.innerText) ? wheelTitleEl.innerText : '';
+            editOverlay.dataset.origDesc = (wheelDescEl && wheelDescEl.innerText) ? wheelDescEl.innerText : '';
+
+            editTitleInput.value = editOverlay.dataset.origTitle;
+            editDescTextarea.value = editOverlay.dataset.origDesc;
+
+            // Live preview while typing (temporary, will be persisted only on OK)
+            const onTitleInput = () => { if (wheelTitleEl) wheelTitleEl.innerText = editTitleInput.value || 'Wheel title'; };
+            const onDescInput = () => { if (wheelDescEl) wheelDescEl.innerText = editDescTextarea.value || 'Wheel description'; };
+            editTitleInput.addEventListener('input', onTitleInput);
+            editDescTextarea.addEventListener('input', onDescInput);
+
+            // Store references so we can remove listeners on close/cancel
+            editOverlay._previewHandlers = { onTitleInput, onDescInput };
+
+            editOverlay.style.display = 'flex';
+            document.body.classList.add('modal-open');
+            setTimeout(()=>{ editOverlay.style.opacity = '1'; editModal.classList.add('show'); }, 10);
+            setTimeout(()=> { if (editTitleInput) editTitleInput.focus(); }, 160);
+        }
+        function closeEditModal(revertPreview = false) {
+            if (!editOverlay) return;
+
+            // Remove live-preview listeners
+            if (editOverlay._previewHandlers) {
+                try {
+                    editTitleInput.removeEventListener('input', editOverlay._previewHandlers.onTitleInput);
+                    editDescTextarea.removeEventListener('input', editOverlay._previewHandlers.onDescInput);
+                } catch (e) {}
+                delete editOverlay._previewHandlers;
+            }
+
+            // If requested, revert preview changes to original values
+            if (revertPreview) {
+                if (wheelTitleEl) wheelTitleEl.innerText = editOverlay.dataset.origTitle || 'Wheel title';
+                if (wheelDescEl) wheelDescEl.innerText = editOverlay.dataset.origDesc || 'Wheel description';
+            }
+
+            editOverlay.style.opacity = '0';
+            editModal.classList.remove('show');
+            document.body.classList.remove('modal-open');
+            setTimeout(()=> { editOverlay.style.display = 'none'; }, 260);
+        }
+
+        if (editTitleBtn) editTitleBtn.addEventListener('click', (e) => { e.stopPropagation(); openEditModal(); });
+        if (editOverlay) editOverlay.addEventListener('click', (e) => { if (e.target === editOverlay) closeEditModal(true); });
+        if (editCancelBtn) editCancelBtn.addEventListener('click', (e)=> { e.preventDefault(); closeEditModal(true); });
+        if (editCloseX) editCloseX.addEventListener('click', (e)=> { e.preventDefault(); closeEditModal(true); });
+        if (editOkBtn) editOkBtn.addEventListener('click', (e)=> {
+            e.preventDefault();
+            const finalTitle = editTitleInput.value.trim() || 'Wheel title';
+            const finalDesc = editDescTextarea.value.trim() || 'Wheel description';
+            if (wheelTitleEl) wheelTitleEl.innerText = finalTitle;
+            if (wheelDescEl) wheelDescEl.innerText = finalDesc;
+            try { localStorage.setItem('wheelTitle', finalTitle); localStorage.setItem('wheelDescription', finalDesc); } catch (e) {}
+            closeEditModal(false);
+        });
+        document.addEventListener('keydown', (e)=> {
+            if (e.key === 'Escape' && editOverlay && editOverlay.style.display === 'flex') closeEditModal(true);
+        });
+
+        // Load persisted title/description if present
+        try {
+            const savedTitle = localStorage.getItem('wheelTitle');
+            const savedDesc = localStorage.getItem('wheelDescription');
+            if (savedTitle && wheelTitleEl) wheelTitleEl.innerText = savedTitle;
+            if (savedDesc && wheelDescEl) wheelDescEl.innerText = savedDesc;
+        } catch (e) {}
     }
 
     function updateNames() {

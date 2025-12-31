@@ -313,21 +313,59 @@
         }
         .theme-switch input { width: auto; cursor: pointer; }
 
-        /* Hide switch (toggles visibility of the entries side panel) */
+        /* Hide switch (iconized on/off button) */
         .hide-switch { 
             position: absolute;
-            right: 5.5rem; /* increased to add space between controls */
+            right: 5.5rem; /* spacing between controls */
             top: 50%;
             transform: translateY(-50%);
             display: flex;
-            gap: 8px;
             align-items: center;
             font-size: 14px;
             color: var(--text-color);
+            z-index: 20;
         }
-        .hide-switch input { width: auto; cursor: pointer; }
+        /* Icon button (high-contrast & accessible) */
+        .hide-switch .hide-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08); /* slightly stronger contrast */
+            border: 1px solid rgba(255,255,255,0.14);
+            color: var(--text-color);
+            cursor: pointer;
+            transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease;
+            padding: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+        }
+        .hide-switch .hide-btn:hover { transform: translateY(-3px); background: rgba(255,255,255,0.10); }
+        .hide-switch .hide-btn:active { transform: translateY(-1px) scale(0.98); }
+        .hide-switch .hide-btn svg { display:block; width:18px; height:18px; color:currentColor; }
+        .hide-switch .hide-btn .eye-closed { display: none; }
+
+        /* Focus / keyboard accessibility */
+        .hide-switch .hide-btn:focus { outline: none; box-shadow: 0 6px 18px rgba(37,99,235,0.12), 0 0 0 4px rgba(37,99,235,0.08); border-color: rgba(37,99,235,0.22); transform: translateY(-2px); }
+
+        /* Active (hidden) state - strong tint and white icon */
+        .hide-switch .hide-btn.active { background: var(--primary-color); border-color: rgba(37,99,235,0.95); color: #ffffff; box-shadow: 0 8px 24px rgba(47,110,246,0.14); }
+        .hide-switch .hide-btn.active .eye-open { display: none; }
+        .hide-switch .hide-btn.active .eye-closed { display: block; }
+
+        /* Light theme override so the button remains visible on light backgrounds */
+        body.light-theme .hide-switch .hide-btn { background: rgba(2,6,23,0.06); border-color: rgba(2,6,23,0.12); color: #071428; }
+        body.light-theme .hide-switch .hide-btn:hover { background: rgba(2,6,23,0.08); }
+        body.light-theme .hide-switch .hide-btn.active { background: var(--primary-color); color: #fff; border-color: rgba(37,99,235,0.85); }
 
         /* Make more breathing room on narrow screens */
+        @media (max-width: 720px) {
+            .theme-switch { right: 0.9rem; }
+            .hide-switch { right: 5.2rem; }
+            .hide-switch .hide-btn { width:40px; height:40px; }
+        }
+
         @media (max-width: 480px) {
             .theme-switch { right: 1rem; }
             .hide-switch { right: 6.8rem; }
@@ -559,3 +597,44 @@
 
         /* Ensure wheel canvas sits above vignette */
         #wheel-wrapper, canvas { position: relative; z-index: 2; }
+
+        /* -------------------- Edit Title & Description UI -------------------- */
+        .wheel-info { margin-top: 18px; width: 100%; max-width: 520px; display:flex; justify-content: center; }
+        .wheel-info-row { background: rgba(255,255,255,0.02); border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:12px; width:100%; box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
+        .wheel-texts { flex:1; text-align:left; }
+        #wheel-title { margin:0; font-size:18px; font-weight:700; color:var(--text-color); }
+        #wheel-description { margin:4px 0 0; font-size:13px; color:var(--muted-color); }
+
+        /* Floating pencil button (top-left) */
+        .floating-edit { position: fixed; top: 18px; left: 18px; width:56px; height:56px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background: linear-gradient(180deg,#2f6ef6,#1a4ed6); color:#fff; border:none; box-shadow: 0 8px 22px rgba(20,40,80,0.45), 0 2px 6px rgba(0,0,0,0.4) inset; cursor:pointer; z-index:10050; font-size:20px; transition: transform 140ms ease, box-shadow 140ms ease; }
+        .floating-edit:hover { transform: translateY(-3px); box-shadow: 0 12px 26px rgba(20,40,80,0.5); }
+        .floating-edit:active { transform: translateY(-1px) scale(.99); }
+
+        /* Hide the inline wheel icon (we use floating button) */
+        .wheel-info .icon-btn { display:none; }
+
+        /* Edit modal (match reference design) */
+        #edit-overlay { position: fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.65); z-index:10040; opacity:0; transition: opacity 0.2s ease; }
+        #edit-modal { width: 640px; max-width:94%; background: transparent; border-radius:12px; transform: translateY(6px) scale(0.99); transition: transform 0.18s cubic-bezier(.2,.9,.2,1.1), opacity 0.18s; z-index:10041; }
+        #edit-modal .modal-header { background: rgba(20,20,20,0.98); color:#fff; padding:16px 18px; display:flex; align-items:center; gap:12px; border-radius:10px 10px 0 0; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+        #edit-modal .modal-header h3 { margin:0; font-size:18px; font-weight:700; }
+        #edit-modal .modal-header .modal-x { color: #cfcfcf; font-size:20px; background:transparent; border:none; }
+        #edit-modal .modal-body { background: #141416; padding:18px; color:var(--text-color); border-bottom:1px solid rgba(255,255,255,0.02); border-radius:0 0 10px 10px; }
+
+        #edit-modal input[type="text"], #edit-modal textarea { width:100%; padding:14px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:#1b1b1c; color:var(--text-color); outline:none; font-size:15px; }
+        #edit-modal input::placeholder, #edit-modal textarea::placeholder { color: rgba(255,255,255,0.45); }
+        #edit-modal textarea { min-height:140px; resize: vertical; }
+        #edit-modal input:focus, #edit-modal textarea:focus { border-color: rgba(37,99,235,0.95); box-shadow: 0 6px 24px rgba(37,99,235,0.08) inset; }
+
+        #edit-modal .modal-footer { padding:12px 18px; display:flex; justify-content:flex-end; gap:12px; background: transparent; }
+        #edit-modal .btn-link { color: #e6eef8; background: transparent; }
+        #edit-modal .btn-primary { background: #2f6ef6; color:#fff; box-shadow: 0 8px 20px rgba(47,110,246,0.16); }
+        #edit-modal.show { transform: translateY(0) scale(1); opacity:1; }
+        #edit-overlay.show { opacity:1; }
+
+        /* responsive tweaks for floating button / modal */
+        @media (max-width: 720px) {
+            .floating-edit { width:48px; height:48px; left:12px; top:12px; font-size:18px; }
+            #edit-modal { width: 92%; }
+            #edit-modal textarea { min-height: 120px; }
+        }
