@@ -1,353 +1,79 @@
-    const canvas = document.getElementById('wheelCanvas');
-    const ctx = canvas.getContext('2d');
-    const nameInput = document.getElementById('name-input');
-    const spinBtn = document.getElementById('spin-btn');
-    const resetBtn = document.getElementById('reset-btn');
-    const centerSpinBtn = document.getElementById('center-spin-button');
-    const modalOverlay = document.getElementById('modal-overlay');
-    const modal = document.getElementById('modal');
-    const winnerDisplay = document.getElementById('winner-name');
-    const closeModal = document.getElementById('close-modal');
-    const popupToggle = document.getElementById('popup-toggle');
-    const statusMsg = document.getElementById('status-msg');
+// Deklarasi Elemen UI
+const canvas = document.getElementById('wheelCanvas');
+const ctx = canvas.getContext('2d');
+const nameInput = document.getElementById('name-input');
+const spinBtn = document.getElementById('center-spin-button');
+const resetBtn = document.getElementById('reset-btn');
+const centerSpinBtn = document.getElementById('center-spin-button');
+const modalOverlay = document.getElementById('modal-overlay');
+const modal = document.getElementById('modal');
+const winnerDisplay = document.getElementById('winner-name');
+const closeModal = document.getElementById('close-modal');
+const popupToggle = document.getElementById('popup-toggle');
+const statusMsg = document.getElementById('status-msg');
 
-    // Audio / sound controls
-    const soundEnable = document.getElementById('sound-enable');
-    const soundFile = document.getElementById('sound-file');
-    const testSoundBtn = document.getElementById('test-sound');
-    const soundVolume = document.getElementById('sound-volume');
-    const soundLoop = document.getElementById('sound-loop');
-    const spinAudio = document.getElementById('spin-audio');
+// Audio / Sound
+const soundEnable = document.getElementById('sound-enable');
+const soundFile = document.getElementById('sound-file');
+const soundVolume = document.getElementById('sound-volume');
+const soundLoop = document.getElementById('sound-loop');
+const spinAudio = document.getElementById('spin-audio');
 
-    // Tab & Results / history UI elements
-    const tabEntriesBtn = document.getElementById('tab-entries');
-    const tabResultsBtn = document.getElementById('tab-results');
-    const entriesPanel = document.getElementById('entries-panel');
-    const resultsPanel = document.getElementById('results-panel');
-    const entriesCountEl = document.getElementById('entries-count');
-    const resultsListEl = document.getElementById('results-list');
-    const resultsCountEl = document.getElementById('results-count');
-    const clearResultsBtn = document.getElementById('clear-results');
-    const sortResultsBtn = document.getElementById('sort-results');
-    let results = []; // array of {name, time}
+// History & Tabs
+const resultsListEl = document.getElementById('results-list');
+const resultsCountEl = document.getElementById('results-count');
+const entriesCountEl = document.getElementById('entries-count');
 
+let names = [];
+let results = [];
+let currentRotation = 0;
+let isSpinning = false;
+let audioEnabled = false;
 
-    let audioDataUrl = null;
-    let audioEnabled = false;
-    let audioContext = null;
-    let spinOsc = null;
-    let spinGain = null;
+const colors = ['#FF5733', '#33FF57', '#3357FF', '#F333FF', '#FF33A1', '#33FFF6', '#FFC300', '#581845', '#28B463', '#AF7AC5', '#F4D03F', '#E67E22'];
 
-    let names = [];
-    let currentRotation = 0;
-    let isSpinning = false;
-    let initialList = "";
-    let lastWinnerIndex = null;
+// --- FUNGSI UTAMA ---
 
-    const colors = [
-        '#FF5733', '#33FF57', '#3357FF', '#F333FF', 
-        '#FF33A1', '#33FFF6', '#FFC300', '#581845',
-        '#28B463', '#AF7AC5', '#F4D03F', '#E67E22'
-    ];
+function init() {
+    updateNames();
+    loadResults();
+    
+    // Listeners
+    nameInput.addEventListener('input', updateNames);
+    spinBtn.addEventListener('click', spin);
+    if (closeModal) closeModal.addEventListener('click', hideWinner);
+    if (modalOverlay) modalOverlay.addEventListener('click', (e) => { if(e.target === modalOverlay) hideWinner(); });
 
-    function init() {
-        initialList = nameInput.value;
-        updateNames();
-        
-        nameInput.addEventListener('input', updateNames);
-        spinBtn.addEventListener('click', spin);
-        resetBtn.addEventListener('click', resetWheel);
-        closeModal.addEventListener('click', hideWinner);
-        modalOverlay.addEventListener('click', (e) => {
-            if(e.target === modalOverlay) hideWinner();
-        });
+    // Shortcut Ctrl + Enter untuk Spin
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'Enter' && !isSpinning) spin();
+    });
 
-        // Center button and tap-to-spin handlers
-        if (centerSpinBtn) {
-            centerSpinBtn.addEventListener('click', (e) => { e.stopPropagation(); if (!isSpinning) spin(); });
-            centerSpinBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (!isSpinning) spin(); }, {passive:false});
-        }
-        // Allow touching/clicking the wheel canvas to spin
-        if (canvas) {
-            canvas.addEventListener('pointerdown', (e) => {
-                // Only respond to primary button/primary touch
-                if (e.button && e.button !== 0) return;
-                if (!isSpinning) spin();
-            });
-            canvas.addEventListener('touchstart', (e) => { e.preventDefault(); if (!isSpinning) spin(); }, {passive:false});
-        }
-
-        // Modal controls (close X and remove)
-        const modalCloseX = document.getElementById('modal-close-x');
-        const removeBtn = document.getElementById('remove-btn');
-        if (modalCloseX) modalCloseX.addEventListener('click', hideWinner);
-        if (removeBtn) removeBtn.addEventListener('click', () => {
-            if (lastWinnerIndex !== null && typeof lastWinnerIndex !== 'undefined') {
-                removeName(lastWinnerIndex);
-                lastWinnerIndex = null;
-                hideWinner();
-            }
-        });
-
-        // Theme setup
-        const themeToggle = document.getElementById('theme-toggle');
-        const themeLabel = document.getElementById('theme-label');
-        function applyTheme(theme) {
-            if (theme === 'dark') document.body.classList.add('dark-theme');
-            else document.body.classList.remove('dark-theme');
-            if (themeToggle) themeToggle.checked = theme === 'dark';
-            if (themeLabel) themeLabel.innerText = theme === 'dark' ? 'Dark' : 'Light';
-            localStorage.setItem('theme', theme);
-        }
-        const savedTheme = localStorage.getItem('theme');
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
-        if (themeToggle) themeToggle.addEventListener('change', (e) => {
-            applyTheme(e.target.checked ? 'dark' : 'light');
-        });
-
-        // Hide / show entries side-panel (icon button)
-        const hideToggle = document.getElementById('hide-toggle');
-        const sidePanelEl = document.querySelector('.side-panel');
-        function applyHideMode(h) {
-            if (!sidePanelEl || !hideToggle) return;
-            if (h) {
-                sidePanelEl.classList.add('hidden');
-                hideToggle.setAttribute('aria-pressed', 'true');
-                hideToggle.classList.add('active');
-                hideToggle.title = 'Show inputs';
+    // Fitur Cheat (Double Click Judul)
+    const title = document.querySelector('h1');
+    if (title) {
+        title.addEventListener('dblclick', () => {
+            const currentCheat = localStorage.getItem('cheatWinner');
+            const cheatName = prompt("Masukkan nama yang ingin selalu menang:", currentCheat || "");
+            if (cheatName === null || cheatName.trim() === "") {
+                localStorage.removeItem('cheatWinner');
             } else {
-                sidePanelEl.classList.remove('hidden');
-                hideToggle.setAttribute('aria-pressed', 'false');
-                hideToggle.classList.remove('active');
-                hideToggle.title = 'Hide inputs';
+                localStorage.setItem('cheatWinner', cheatName.trim());
             }
-            try { localStorage.setItem('hideSide', h ? 'true' : 'false'); } catch (e) {}
-        }
-        const savedHide = localStorage.getItem('hideSide') === 'true';
-        if (hideToggle) {
-            // initialize
-            applyHideMode(savedHide);
-            hideToggle.addEventListener('click', () => {
-                const isPressed = hideToggle.getAttribute('aria-pressed') === 'true';
-                applyHideMode(!isPressed);
-            });
-        } else if (savedHide && sidePanelEl) {
-            sidePanelEl.classList.add('hidden');
-        }
-
-        // --- Sound controls setup ---
-        try {
-            audioDataUrl = localStorage.getItem('spinAudioData');
-            audioEnabled = localStorage.getItem('spinAudioEnabled') === 'true';
-            const savedVol = parseFloat(localStorage.getItem('spinAudioVolume')) || 0.8;
-
-            if (audioDataUrl) spinAudio.src = audioDataUrl;
-            soundEnable.checked = audioEnabled;
-            soundVolume.value = savedVol;
-            spinAudio.volume = savedVol;
-            soundEnable.addEventListener('change', (e) => {
-                audioEnabled = !!e.target.checked;
-                localStorage.setItem('spinAudioEnabled', audioEnabled);
-            });
-
-            soundVolume.addEventListener('input', (e) => {
-                const v = parseFloat(e.target.value);
-                spinAudio.volume = v;
-                localStorage.setItem('spinAudioVolume', v);
-            });
-
-            soundFile.addEventListener('change', (e) => {
-                const f = e.target.files && e.target.files[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                    audioDataUrl = reader.result;
-                    spinAudio.src = audioDataUrl;
-                    localStorage.setItem('spinAudioData', audioDataUrl);
-                };
-                reader.readAsDataURL(f);
-            });
-
-            testSoundBtn.addEventListener('click', () => {
-                if (!spinAudio.src) {
-                    // simple WebAudio beep as fallback
-                    const ac = new (window.AudioContext || window.webkitAudioContext)();
-                    const o = ac.createOscillator();
-                    const g = ac.createGain();
-                    o.type = 'sawtooth'; o.frequency.value = 400;
-                    g.gain.value = parseFloat(soundVolume.value) || 0.8;
-                    o.connect(g); g.connect(ac.destination);
-                    o.start();
-                    setTimeout(() => { o.stop(); ac.close(); }, 400);
-                } else {
-                    spinAudio.currentTime = 0;
-                    spinAudio.volume = parseFloat(soundVolume.value) || 0.8;
-                    spinAudio.play().catch(() => {});
-                    setTimeout(() => { spinAudio.pause(); spinAudio.currentTime = 0; }, 800);
-                }
-            });
-        } catch (err) {
-            console.warn('Sound setup failed', err);
-        }
-
-        // Wire results/history controls
-        if (clearResultsBtn) clearResultsBtn.addEventListener('click', () => {
-            if (!confirm('Clear the results history?')) return;
-            results = [];
-            saveResults(); renderResults();
         });
-        if (sortResultsBtn) sortResultsBtn.addEventListener('click', () => {
-            results.sort((a,b) => a.name.localeCompare(b.name));
-            saveResults(); renderResults();
-        });
-
-        // Tab switching
-        if (tabEntriesBtn) tabEntriesBtn.addEventListener('click', () => switchTab('entries'));
-        if (tabResultsBtn) tabResultsBtn.addEventListener('click', () => switchTab('results'));
-
-        function switchTab(tab) {
-            if (tab === 'entries') {
-                if (tabEntriesBtn) tabEntriesBtn.classList.add('active');
-                if (tabResultsBtn) tabResultsBtn.classList.remove('active');
-                if (entriesPanel) entriesPanel.classList.add('show');
-                if (resultsPanel) resultsPanel.classList.remove('show');
-            } else {
-                if (tabEntriesBtn) tabEntriesBtn.classList.remove('active');
-                if (tabResultsBtn) tabResultsBtn.classList.add('active');
-                if (entriesPanel) entriesPanel.classList.remove('show');
-                if (resultsPanel) resultsPanel.classList.add('show');
-            }
-        }
-
-        // Top-actions (Shuffle / Sort / Add image)
-        const shuffleBtn = document.getElementById('shuffle-btn');
-        const sortBtn = document.getElementById('sort-btn');
-        const addImageBtn = document.getElementById('add-image-btn');
-        if (shuffleBtn) shuffleBtn.addEventListener('click', () => {
-            const arr = names.slice();
-            for (let i = arr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
-            }
-            nameInput.value = arr.join('\n');
-            updateNames();
-        });
-        if (sortBtn) sortBtn.addEventListener('click', () => {
-            nameInput.value = names.slice().sort((a,b) => a.localeCompare(b)).join('\n'); updateNames();
-        });
-        if (addImageBtn) addImageBtn.addEventListener('click', () => { alert('Add image feature coming soon'); });
-
-        // Ensure counts are up-to-date
-        if (entriesCountEl) entriesCountEl.innerText = nameInput.value.split('\n').filter(n=>n.trim()).length;
-        if (resultsCountEl) resultsCountEl.innerText = results.length;
-
-        // Load saved results
-        loadResults();
-
-        // --- Edit Title & Description UI ---
-        const wheelTitleEl = document.getElementById('wheel-title');
-        const wheelDescEl = document.getElementById('wheel-description');
-        const editTitleBtn = document.getElementById('floating-edit-btn') || document.getElementById('edit-title-btn');
-        const editOverlay = document.getElementById('edit-overlay');
-        const editModal = document.getElementById('edit-modal');
-        const editTitleInput = document.getElementById('edit-title-input');
-        const editDescTextarea = document.getElementById('edit-desc-textarea');
-        const editCancelBtn = document.getElementById('edit-cancel');
-        const editOkBtn = document.getElementById('edit-ok');
-        const editCloseX = document.getElementById('edit-close-x');
-
-        function openEditModal() {
-            if (!editOverlay) return;
-            // Save original values so Cancel can revert
-            editOverlay.dataset.origTitle = (wheelTitleEl && wheelTitleEl.innerText) ? wheelTitleEl.innerText : '';
-            editOverlay.dataset.origDesc = (wheelDescEl && wheelDescEl.innerText) ? wheelDescEl.innerText : '';
-
-            editTitleInput.value = editOverlay.dataset.origTitle;
-            editDescTextarea.value = editOverlay.dataset.origDesc;
-
-            // Live preview while typing (temporary, will be persisted only on OK)
-            const onTitleInput = () => { if (wheelTitleEl) wheelTitleEl.innerText = editTitleInput.value || 'Wheel title'; };
-            const onDescInput = () => { if (wheelDescEl) wheelDescEl.innerText = editDescTextarea.value || 'Wheel description'; };
-            editTitleInput.addEventListener('input', onTitleInput);
-            editDescTextarea.addEventListener('input', onDescInput);
-
-            // Store references so we can remove listeners on close/cancel
-            editOverlay._previewHandlers = { onTitleInput, onDescInput };
-
-            editOverlay.style.display = 'flex';
-            document.body.classList.add('modal-open');
-            setTimeout(()=>{ editOverlay.style.opacity = '1'; editModal.classList.add('show'); }, 10);
-            setTimeout(()=> { if (editTitleInput) editTitleInput.focus(); }, 160);
-        }
-        function closeEditModal(revertPreview = false) {
-            if (!editOverlay) return;
-
-            // Remove live-preview listeners
-            if (editOverlay._previewHandlers) {
-                try {
-                    editTitleInput.removeEventListener('input', editOverlay._previewHandlers.onTitleInput);
-                    editDescTextarea.removeEventListener('input', editOverlay._previewHandlers.onDescInput);
-                } catch (e) {}
-                delete editOverlay._previewHandlers;
-            }
-
-            // If requested, revert preview changes to original values
-            if (revertPreview) {
-                if (wheelTitleEl) wheelTitleEl.innerText = editOverlay.dataset.origTitle || 'Wheel title';
-                if (wheelDescEl) wheelDescEl.innerText = editOverlay.dataset.origDesc || 'Wheel description';
-            }
-
-            editOverlay.style.opacity = '0';
-            editModal.classList.remove('show');
-            document.body.classList.remove('modal-open');
-            setTimeout(()=> { editOverlay.style.display = 'none'; }, 260);
-        }
-
-        if (editTitleBtn) editTitleBtn.addEventListener('click', (e) => { e.stopPropagation(); openEditModal(); });
-        if (editOverlay) editOverlay.addEventListener('click', (e) => { if (e.target === editOverlay) closeEditModal(true); });
-        if (editCancelBtn) editCancelBtn.addEventListener('click', (e)=> { e.preventDefault(); closeEditModal(true); });
-        if (editCloseX) editCloseX.addEventListener('click', (e)=> { e.preventDefault(); closeEditModal(true); });
-        if (editOkBtn) editOkBtn.addEventListener('click', (e)=> {
-            e.preventDefault();
-            const finalTitle = editTitleInput.value.trim() || 'Wheel title';
-            const finalDesc = editDescTextarea.value.trim() || 'Wheel description';
-            if (wheelTitleEl) wheelTitleEl.innerText = finalTitle;
-            if (wheelDescEl) wheelDescEl.innerText = finalDesc;
-            try { localStorage.setItem('wheelTitle', finalTitle); localStorage.setItem('wheelDescription', finalDesc); } catch (e) {}
-            closeEditModal(false);
-        });
-        document.addEventListener('keydown', (e)=> {
-            if (e.key === 'Escape' && editOverlay && editOverlay.style.display === 'flex') closeEditModal(true);
-        });
-
-        // Load persisted title/description if present
-        try {
-            const savedTitle = localStorage.getItem('wheelTitle');
-            const savedDesc = localStorage.getItem('wheelDescription');
-            if (savedTitle && wheelTitleEl) wheelTitleEl.innerText = savedTitle;
-            if (savedDesc && wheelDescEl) wheelDescEl.innerText = savedDesc;
-        } catch (e) {}
     }
 
-    function updateNames() {
-        names = nameInput.value.split('\n').filter(name => name.trim() !== "");
-        drawWheel();
-        if (entriesCountEl) entriesCountEl.innerText = names.length;
-        
-        if (names.length === 0) {
-            spinBtn.disabled = true;
-            statusMsg.innerText = "Add some names to spin!";
-        } else if (names.length === 1 && isSpinning === false) {
-             statusMsg.innerText = "One person left!";
-             spinBtn.disabled = false;
-        } else {
-            spinBtn.disabled = false;
-            statusMsg.innerText = "";
-        }
-    }
+    
+}
 
-    function drawWheel() {
+function updateNames() {
+    names = nameInput.value.split('\n').filter(n => n.trim() !== "");
+    if (entriesCountEl) entriesCountEl.innerText = names.length;
+    drawWheel();
+    spinBtn.disabled = names.length === 0;
+}
+
+ function drawWheel() {
         const size = canvas.width;
         const center = size / 2;
         const radius = size / 2 - 10;
@@ -418,85 +144,108 @@
         pointer.style.color = colors[index % colors.length] || '#fff';
     }
 
-    function spin() {
-        if (isSpinning || names.length === 0) return;
+function spin() {
+    if (isSpinning || names.length === 0) return;
 
-        isSpinning = true;
-        spinBtn.disabled = true;
-        nameInput.disabled = true;
-        try { if (centerSpinBtn) { centerSpinBtn.classList.add('spinning'); centerSpinBtn.disabled = true; } } catch (e) {}
+    isSpinning = true;
+    spinBtn.disabled = true;
 
+    const savedCheatName = localStorage.getItem('cheatWinner');
+    let forcedIndex = names.findIndex(n => n.toLowerCase() === (savedCheatName || "").toLowerCase());
 
-        // Start spin sound if enabled
-        if (audioEnabled) startSpinSound();
+    const arcSize = (Math.PI * 2) / names.length;
+    const extraSpins = 5 * Math.PI * 2; // 5 Putaran penuh
+    let targetRotation;
 
-        const extraSpins = 5 + Math.random() * 5; // 5 to 10 full rotations
-        const spinDuration = 4000 + Math.random() * 2000; // 4-6 seconds
-        const startRotation = currentRotation;
-        const totalRotationGoal = startRotation + (extraSpins * Math.PI * 2);
-        
-        const startTime = performance.now();
-
-        function animate(currentTime) {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / spinDuration, 1);
-            
-            // Ease out cubic function for realistic deceleration
-            const easeOut = 1 - Math.pow(1 - progress, 3);
-            
-            currentRotation = startRotation + (totalRotationGoal - startRotation) * easeOut;
-
-            // Update spin sound to match speed
-            if (audioEnabled) updateSpinSound(easeOut);
-            
-            drawWheel();
-
-            if (progress < 1) {
-                requestAnimationFrame(animate);
-            } else {
-                finishSpin();
-            }
-        }
-
-        requestAnimationFrame(animate);
+    if (forcedIndex !== -1) {
+        // Logika Matematika agar berhenti di Nama Cheat (Pointer di sisi kanan/0 Radian)
+        const stopAngle = (Math.PI * 2) - (forcedIndex * arcSize) - (arcSize / 2);
+        targetRotation = currentRotation + extraSpins + (stopAngle - (currentRotation % (Math.PI * 2)));
+    } else {
+        targetRotation = currentRotation + extraSpins + (Math.random() * Math.PI * 2);
     }
 
-    function finishSpin() {
-        isSpinning = false;
-        nameInput.disabled = false;
-        try { if (centerSpinBtn) { centerSpinBtn.classList.remove('spinning'); centerSpinBtn.disabled = false; } } catch (e) {}
+    const duration = 4000;
+    const startTime = performance.now();
 
-        // Stop the spin sound
-        if (audioEnabled) stopSpinSound();
-        
-        // Calculate Winner
-        // Normalize rotation to 0 to 2PI
-        const normalizedRotation = (currentRotation % (Math.PI * 2));
-        const arcSize = (Math.PI * 2) / names.length;
-        
-        // The pointer is at 1.5 * PI (Top center)
-        // We need to find which segment is at that position
-        // Index calculation: (PointerPosition - currentRotation) / arcSize
-        let winnerIndex = Math.floor(((Math.PI * 1.5) - normalizedRotation) / arcSize) % names.length;
-        
-        if (winnerIndex < 0) winnerIndex += names.length;
-        
-        const winner = names[winnerIndex];
+    function animate(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeOut = 1 - Math.pow(1 - progress, 3); // Slow down effect
 
-        // Record the result history immediately
-        try { addResult(winner); } catch (e) {}
+        currentRotation = currentRotation + (targetRotation - currentRotation) * (easeOut * 0.05);
+        drawWheel();
 
-        if (popupToggle.checked) {
-            // If popup is enabled, show it and let the user Close or Remove
-            lastWinnerIndex = winnerIndex;
-            showWinner(winner);
+        if (progress < 1) {
+            requestAnimationFrame(animate);
         } else {
-            // No popup: remove automatically
-            setTimeout(() => {
-                removeName(winnerIndex);
-            }, 200);
+            finishSpin();
         }
     }
+    requestAnimationFrame(animate);
+}
+
+// Tambahkan variabel global ini di bagian atas (jika belum ada)
+let lastWinnerIndex = null;
+
+function finishSpin() {
+    isSpinning = false;
+    spinBtn.disabled = false;
+
+    const arcSize = (Math.PI * 2) / names.length;
+    // Normalisasi rotasi agar selalu di antara 0 sampai 2*PI
+    let normalizedRotation = currentRotation % (Math.PI * 2);
+    if (normalizedRotation < 0) normalizedRotation += Math.PI * 2;
+    
+    // Hitung indeks pemenang (karena putaran berlawanan arah jarum jam secara matematis)
+    let winnerIndex = Math.floor(((Math.PI * 2) - normalizedRotation) / arcSize) % names.length;
+    
+    const winner = names[winnerIndex];
+    lastWinnerIndex = winnerIndex; // Simpan index untuk fungsi Remove
+
+    // Simpan ke history
+    addResult(winner);
+    
+    // Tampilkan Modal
+    winnerDisplay.innerText = winner;
+    modalOverlay.style.display = 'flex';
+    document.body.classList.add('modal-open'); // Tambahkan class agar background tetap bagus
+    
+    setTimeout(() => {
+        modalOverlay.style.opacity = '1';
+        modal.classList.add('show');
+    }, 50);
+}
+
+// FUNGSI REMOVE: Tambahkan ini agar tombol Remove di modal berfungsi
+const removeBtn = document.getElementById('remove-btn');
+if (removeBtn) {
+    removeBtn.onclick = () => {
+        if (lastWinnerIndex !== null) {
+            names.splice(lastWinnerIndex, 1); // Hapus nama dari array
+            nameInput.value = names.join('\n'); // Update textarea
+            updateNames(); // Gambar ulang wheel
+            lastWinnerIndex = null;
+            hideWinner(); // Tutup modal
+        }
+    };
+}
+
+function hideWinner() {
+    modalOverlay.style.opacity = '0';
+    modal.classList.remove('show');
+    document.body.classList.remove('modal-open');
+    
+    setTimeout(() => {
+        modalOverlay.style.display = 'none';
+    }, 300);
+}
+
+// Jalankan aplikasi
+
+
+// Tambahkan pemanggilan init di akhir file
+
 
     function removeName(index) {
         names.splice(index, 1);
@@ -782,6 +531,8 @@ class ConfettiParticle {
         confCtx.restore();
     }
 }
+
+
 
 function initConfetti() {
     particles = [];
